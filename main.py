@@ -5,8 +5,8 @@ import time
 import urequests
 from secrets import *
 
-# Sensor temperatura interno
-sensor_temp = machine.ADC(4)
+# Sensor temperatura TMP36 (GP28)
+sensor_temp = machine.ADC(28)
 
 # LED integrado Pico 2W
 led = machine.Pin("LED", machine.Pin.OUT)
@@ -39,7 +39,7 @@ def leer_temperatura():
     lectura = sensor_temp.read_u16()
     voltaje = lectura * (3.3 / 65535)
 
-    temperatura = 27 - ((voltaje - 0.706) / 0.001721)
+    temperatura = (voltaje - 0.5) * 100
 
     return round(temperatura, 2)
 
