@@ -30,11 +30,20 @@
       margin-top: 20px;
     }
 
-    button {
-      display: block;
-      margin: 10px auto;
+    .controles {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin: 20px 0;
+      align-items: center;
+    }
+
+    button, input[type="date"] {
       padding: 10px 20px;
       cursor: pointer;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
     }
   </style>
 </head>
@@ -43,13 +52,17 @@
   <div class="container">
     <h1>🌡️ Temperaturas en tiempo real</h1>
 
-    <button onclick="cargarDatos()">Actualizar datos</button>
+    <div class="controles">
+      <input type="date" id="filtro-fecha" onchange="aplicarFiltro()" title="Filtrar por día" />
+      <button onclick="cargarDatos()">Actualizar datos</button>
+    </div>
 
     <canvas id="grafica"></canvas>
   </div>
 
   <script>
     let chart;
+    let todosLosDatos = [];
 
     async function cargarDatos() {
       try {
@@ -57,20 +70,35 @@
         const json = await res.json();
 
         // ⚠️ Ajusta esto si tu API usa otro formato (ej: json.data)
-        const datos = json.data || json;
+        todosLosDatos = json.data || json;
 
-        const labels = datos.map(d =>
-          new Date(d.fecha || d.timestamp).toLocaleString()
-        );
-
-        const temperaturas = datos.map(d => d.temperatura);
-
-        dibujarGrafica(labels, temperaturas);
+        aplicarFiltro();
 
       } catch (err) {
         console.error("Error cargando datos:", err);
         alert("Error al obtener datos de la API");
       }
+    }
+
+    function aplicarFiltro() {
+      const fechaFiltro = document.getElementById("filtro-fecha").value;
+      
+      let datosFiltrados = todosLosDatos;
+      
+      if (fechaFiltro) {
+        datosFiltrados = todosLosDatos.filter(d => {
+          const fechaStr = d.fecha || d.timestamp;
+          return fechaStr && fechaStr.startsWith(fechaFiltro);
+        });
+      }
+      
+      const labels = datosFiltrados.map(d =>
+        new Date(d.fecha || d.timestamp).toLocaleString()
+      );
+
+      const temperaturas = datosFiltrados.map(d => d.temperatura);
+
+      dibujarGrafica(labels, temperaturas);
     }
 
     function dibujarGrafica(labels, data) {
