@@ -66,11 +66,19 @@
 
     async function cargarDatos() {
       try {
-        const res = await fetch("https://api.mueblesavenida.com/items/temperaturas");
+        // Pedimos los últimos 200 registros ordenados por la fecha más reciente
+        const res = await fetch("https://api.mueblesavenida.com/items/temperaturas?sort=-fecha&limit=200");
         const json = await res.json();
 
         // ⚠️ Ajusta esto si tu API usa otro formato (ej: json.data)
-        todosLosDatos = json.data || json;
+        let datos = json.data || json;
+        
+        // Invertimos el arreglo para que el gráfico se dibuje en orden cronológico (de más antiguo a más nuevo)
+        if (Array.isArray(datos)) {
+          datos.reverse();
+        }
+        
+        todosLosDatos = datos;
 
         aplicarFiltro();
 

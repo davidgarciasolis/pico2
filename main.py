@@ -122,18 +122,20 @@ def enviar_datos(token, temperatura):
     r.close()
 
 
-def esperar_siguiente_hora():
+def esperar_hasta_medicion():
 
     ahora = time.localtime()
-
-    minutos_restantes = 59 - ahora[4]
-    segundos_restantes = 60 - ahora[5]
     
-    total_segundos = (minutos_restantes * 60) + segundos_restantes
+    if ahora[4] == 59:
+        segundos_espera = (59 * 60) + (60 - ahora[5])
+    else:
+        minutos_restantes = 58 - ahora[4]
+        segundos_restantes = 60 - ahora[5]
+        segundos_espera = (minutos_restantes * 60) + segundos_restantes
 
-    print("Esperando", total_segundos, "segundos para la próxima hora")
-
-    time.sleep(total_segundos)
+    print("Esperando", segundos_espera, "segundos para iniciar la medición")
+    
+    time.sleep(segundos_espera)
 
 
 conectar_wifi()
@@ -141,20 +143,28 @@ sincronizar_hora()
 
 while True:
 
+    esperar_hasta_medicion()
+
     try:
 
-        led.toggle()
+        print("Iniciando medición de temperatura (60 segundos)...")
+        suma_temperaturas = 0
+        
+        for _ in range(60):
+            led.toggle()
+            suma_temperaturas += leer_temperatura()
+            time.sleep(1)
+            
+        temperatura_media = round(suma_temperaturas / 60, 2)
 
-        temperatura = leer_temperatura()
-
-        print("Temperatura:", temperatura)
+        print("Temperatura Media:", temperatura_media)
         print("Fecha:", fecha_iso())
 
         token = login_api()
 
         enviar_datos(
             token,
-            temperatura
+            temperatura_media
         )
 
         led.on()
@@ -164,5 +174,3 @@ while True:
         print("ERROR:", e)
 
         led.off()
-
-    esperar_siguiente_hora()
