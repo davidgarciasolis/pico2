@@ -2,50 +2,11 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gráfico de Temperaturas</title>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 40px;
-      background: #f5f5f5;
-    }
-
-    .container {
-      max-width: 900px;
-      margin: auto;
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-
-    h1 {
-      text-align: center;
-    }
-
-    canvas {
-      margin-top: 20px;
-    }
-
-    .controles {
-      display: flex;
-      justify-content: center;
-      gap: 15px;
-      margin: 20px 0;
-      align-items: center;
-    }
-
-    button, input[type="date"] {
-      padding: 10px 20px;
-      cursor: pointer;
-      font-size: 16px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
@@ -53,95 +14,21 @@
     <h1>🌡️ Temperaturas en tiempo real</h1>
 
     <div class="controles">
-      <input type="date" id="filtro-fecha" onchange="aplicarFiltro()" title="Filtrar por día" />
-      <button onclick="cargarDatos()">Actualizar datos</button>
+      <label>
+        Desde
+        <input type="date" id="fecha-desde" title="Fecha inicial" />
+      </label>
+      <label>
+        Hasta
+        <input type="date" id="fecha-hasta" title="Fecha final" />
+      </label>
+      <button id="btn-actualizar" type="button">Actualizar datos</button>
     </div>
 
+    <p id="estado-carga" class="estado-carga"></p>
     <canvas id="grafica"></canvas>
   </div>
 
-  <script>
-    let chart;
-    let todosLosDatos = [];
-
-    async function cargarDatos() {
-      try {
-        // Pedimos los últimos 200 registros ordenados por la fecha más reciente
-        const res = await fetch("https://api.mueblesavenida.com/items/temperaturas?sort=-fecha&limit=200");
-        const json = await res.json();
-
-        // ⚠️ Ajusta esto si tu API usa otro formato (ej: json.data)
-        let datos = json.data || json;
-        
-        // Invertimos el arreglo para que el gráfico se dibuje en orden cronológico (de más antiguo a más nuevo)
-        if (Array.isArray(datos)) {
-          datos.reverse();
-        }
-        
-        todosLosDatos = datos;
-
-        aplicarFiltro();
-
-      } catch (err) {
-        console.error("Error cargando datos:", err);
-        alert("Error al obtener datos de la API");
-      }
-    }
-
-    function aplicarFiltro() {
-      const fechaFiltro = document.getElementById("filtro-fecha").value;
-      
-      let datosFiltrados = todosLosDatos;
-      
-      if (fechaFiltro) {
-        datosFiltrados = todosLosDatos.filter(d => {
-          const fechaStr = d.fecha || d.timestamp;
-          return fechaStr && fechaStr.startsWith(fechaFiltro);
-        });
-      }
-      
-      const labels = datosFiltrados.map(d =>
-        new Date(d.fecha || d.timestamp).toLocaleString()
-      );
-
-      const temperaturas = datosFiltrados.map(d => d.temperatura);
-
-      dibujarGrafica(labels, temperaturas);
-    }
-
-    function dibujarGrafica(labels, data) {
-      const ctx = document.getElementById("grafica");
-
-      if (chart) chart.destroy();
-
-      chart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: labels,
-          datasets: [{
-            label: "Temperatura (°C)",
-            data: data,
-            borderColor: "red",
-            tension: 0.3,
-            fill: false
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            x: {
-              ticks: {
-                maxRotation: 45,
-                minRotation: 45
-              }
-            }
-          }
-        }
-      });
-    }
-
-    // Carga inicial
-    cargarDatos();
-  </script>
+  <script src="app.js" defer></script>
 </body>
 </html>
