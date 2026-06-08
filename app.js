@@ -77,21 +77,24 @@ async function cargarDatos() {
 
     if (!datosOrdenados.length) {
       estado.textContent = "No hay registros en el rango seleccionado.";
+      actualizarResumen([], fechaDesde, fechaHasta);
       dibujarGrafica([], []);
       return;
     }
 
     estado.textContent = `Mostrando ${datosOrdenados.length} registros entre ${fechaDesde || "inicio"} y ${fechaHasta || "fin"}.`;
 
-    const labels = datosOrdenados.map((d) =>
-      new Date(d.fecha || d.timestamp).toLocaleString()
-    );
-    const temperaturas = datosOrdenados.map((d) => d.temperatura);
+    const datosValidos = datosOrdenados.filter((d) => Number.isFinite(Number(d.temperatura)));
+    const labels = datosValidos.map((d) => new Date(d.fecha || d.timestamp).toLocaleString());
+    const temperaturas = datosValidos.map((d) => Number(d.temperatura));
+
+    actualizarResumen(temperaturas, fechaDesde, fechaHasta);
 
     dibujarGrafica(labels, temperaturas);
   } catch (err) {
     console.error("Error cargando datos:", err);
     estado.textContent = "Error al obtener datos de la API.";
+    actualizarResumen([], fechaDesde, fechaHasta);
     alert("Error al obtener datos de la API");
   }
 }
@@ -109,25 +112,87 @@ function dibujarGrafica(labels, data) {
         {
           label: "Temperatura (°C)",
           data,
-          borderColor: "#dc2626",
-          backgroundColor: "rgba(220, 38, 38, 0.1)",
+          borderColor: "#ea580c",
+          backgroundColor: "rgba(234, 88, 12, 0.10)",
           tension: 0.3,
           fill: true,
           pointRadius: 2,
+          pointHoverRadius: 4,
+          pointBackgroundColor: "#fdba74",
+          pointBorderColor: "#ea580c",
         },
       ],
     },
     options: {
       responsive: true,
-      maintainAspectRatio: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          displayColors: false,
+          backgroundColor: "rgba(15, 23, 42, 0.96)",
+          borderColor: "rgba(148, 163, 184, 0.22)",
+          borderWidth: 1,
+          titleColor: "#ffffff",
+          bodyColor: "#e5eefb",
+        },
+      },
       scales: {
-        x: {
+        y: {
+          grid: {
+            color: "rgba(148, 163, 184, 0.14)",
+          },
           ticks: {
-            maxRotation: 45,
-            minRotation: 45,
+            color: "#c7d5e6",
+          },
+        },
+        x: {
+          grid: {
+            display: false,
+          },
+          ticks: {
+            color: "#c7d5e6",
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 6,
           },
         },
       },
     },
   });
+}
+
+function actualizarResumen(temperaturas, fechaDesde, fechaHasta) {
+  const registrosEl = document.getElementById("metric-registros");
+  const mediaEl = document.getElementById("metric-media");
+  const rangoEl = document.getElementById("metric-rango");
+
+  if (!temperaturas.length) {
+    registrosEl.textContent = "0";
+    mediaEl.textContent = "--";
+    rangoEl.textContent = formatRango(fechaDesde, fechaHasta);
+    return;
+  }
+
+  const suma = temperaturas.reduce((acc, value) => acc + value, 0);
+  const media = suma / temperaturas.length;
+  const min = Math.min(...temperaturas);
+  const max = Math.max(...temperaturas);
+
+  registrosEl.textContent = String(temperaturas.length);
+  mediaEl.textContent = `${media.toFixed(1)} °C`;
+  rangoEl.textContent = `${min.toFixed(1)} - ${max.toFixed(1)} °C`;
+}
+
+function formatRango(desde, hasta) {
+  if (desde && hasta) return `${desde} → ${hasta}`;
+  if (desde) return `Desde ${desde}`;
+  if (hasta) return `Hasta ${hasta}`;
+  return "Sin rango";
 }

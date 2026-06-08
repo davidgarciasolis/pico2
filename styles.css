@@ -1,87 +1,200 @@
+:root {
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --surface-soft: #f8fafc;
+  --border: #e5eaf2;
+  --text: #0f172a;
+  --muted: #64748b;
+  --accent: #ea580c;
+  --accent-soft: rgba(234, 88, 12, 0.08);
+  --shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  --radius-xl: 22px;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
-  font-family: Arial, sans-serif;
   margin: 0;
-  padding: 40px 20px;
-  background: #f5f5f5;
-  color: #1f2937;
+  min-height: 100vh;
+  font-family: "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(234, 88, 12, 0.06), transparent 30%),
+    linear-gradient(180deg, #fbfdff 0%, var(--bg) 100%);
 }
 
-.container {
-  max-width: 980px;
-  margin: auto;
-  background: white;
-  padding: 24px;
-  border-radius: 12px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+.page-shell {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 40px;
 }
 
-h1 {
-  text-align: center;
-  margin-top: 0;
+.page-header {
+  margin-bottom: 16px;
+  padding: 0 4px;
 }
 
-canvas {
-  margin-top: 16px;
+.page-header h1 {
+  margin: 0;
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.filters-panel {
+  padding: 18px;
 }
 
 .controles {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin: 20px 0 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
   align-items: end;
-  flex-wrap: wrap;
 }
 
 .controles label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 14px;
+  display: grid;
+  gap: 8px;
+  font-size: 0.92rem;
+  color: var(--muted);
 }
 
 button,
 input[type="date"] {
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: white;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  color: var(--text);
+  font: inherit;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+input[type="date"] {
+  color-scheme: light;
 }
 
 button {
-  background: #111827;
-  color: white;
-  border-color: #111827;
+  cursor: pointer;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), #fb923c);
+  border-color: transparent;
+  color: #fff;
 }
 
-button:hover {
-  background: #1f2937;
+button:hover,
+button:focus-visible,
+input[type="date"]:hover,
+input[type="date"]:focus-visible {
+  transform: translateY(-1px);
+  outline: none;
+  border-color: rgba(234, 88, 12, 0.35);
+  box-shadow: 0 0 0 4px var(--accent-soft);
 }
 
 .estado-carga {
-  margin: 0 0 12px;
-  text-align: center;
-  color: #6b7280;
-  min-height: 1.2em;
+  margin: 12px 0 0;
+  min-height: 1.3em;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.metric-card {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.metric-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: clamp(1.1rem, 1.8vw, 1.5rem);
+  letter-spacing: -0.03em;
+}
+
+.chart-panel {
+  padding: 18px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.5rem);
+  letter-spacing: -0.03em;
+}
+
+.chart-shell {
+  position: relative;
+  min-height: 360px;
+  width: 100%;
+}
+
+.chart-shell canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+@media (max-width: 860px) {
+  .controles,
+  .metrics {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
-  body {
+  .page-shell {
+    width: min(100% - 20px, 1120px);
+    padding: 16px 0 24px;
+  }
+
+  .filters-panel,
+  .chart-panel {
     padding: 16px;
   }
 
-  .container {
-    padding: 16px;
-  }
-
-  .controles {
-    align-items: stretch;
-  }
-
-  .controles label,
-  button {
-    width: 100%;
+  .chart-shell {
+    min-height: 280px;
   }
 }
