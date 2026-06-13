@@ -18,7 +18,18 @@
   <body>
     <main class="page-shell">
       <header class="page-header">
-        <h1>Temperaturas en tiempo real</h1>
+        <div class="hero-copy">
+          <span class="eyebrow">Monitoreo ambiental</span>
+          <h1>Temperaturas en tiempo real</h1>
+          <p>
+            Revisa la evolución histórica, filtra por fechas y detecta picos o
+            caídas de un vistazo.
+          </p>
+        </div>
+        <div class="hero-badge" aria-label="Estado general">
+          <span class="badge-dot"></span>
+          <span>Datos conectados a la API</span>
+        </div>
       </header>
 
       <section class="panel filters-panel" aria-label="Filtros de fechas">
@@ -33,7 +44,10 @@
           </label>
           <button id="btn-actualizar" type="button">Actualizar datos</button>
         </div>
-        <p id="estado-carga" class="estado-carga"></p>
+        <div class="filters-meta">
+          <p id="estado-carga" class="estado-carga"></p>
+          <p id="ultima-actualizacion" class="ultima-actualizacion"></p>
+        </div>
       </section>
 
       <section class="metrics" aria-label="Resumen de datos">
@@ -57,6 +71,7 @@
             <p class="panel-kicker">Tendencia</p>
             <h2>Registro histórico de temperatura</h2>
           </div>
+          <p class="panel-note">La curva se adapta al rango elegido.</p>
         </div>
         <div class="chart-shell">
           <canvas id="grafica"></canvas>
