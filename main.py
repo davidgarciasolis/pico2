@@ -8,6 +8,15 @@ from secrets import *
 # Sensor temperatura TMP36 (GP28)
 sensor_temp = machine.ADC(28)
 
+# Sensor capacitivo de humedad del suelo (AOUT conectado a GP26 / ADC0).
+# Debe alimentarse a 3V3 para que su salida no supere los 3,3 V.
+sensor_humedad = machine.ADC(26)
+
+# Ajusta estos valores después de calibrar el sensor: al aire/tierra seca y
+# en tierra bien húmeda. En este sensor, una lectura menor indica más humedad.
+LECTURA_SECO = 50000
+LECTURA_HUMEDO = 20000
+
 # LED integrado Pico 2W
 led = machine.Pin("LED", machine.Pin.OUT)
 
@@ -42,6 +51,14 @@ def leer_temperatura():
     temperatura = (voltaje - 0.5) * 100
 
     return round(temperatura, 2)
+
+
+def leer_humedad():
+    lectura = sensor_humedad.read_u16()
+    humedad = (LECTURA_SECO - lectura) * 100 / (LECTURA_SECO - LECTURA_HUMEDO)
+
+    # Evita valores fuera del rango por variaciones del sensor.
+    return round(max(0, min(100, humedad)), 1)
 
 
 def login_api():
@@ -97,12 +114,13 @@ def fecha_iso():
     )
 
 
-def enviar_datos(token, temperatura):
+def enviar_datos(token, temperatura, humedad):
 
     url = API_URL + "/items/temperaturas"
 
     payload = {
         "temperatura": temperatura,
+        "humedad": humedad,
         "fecha": fecha_iso()
     }
 
@@ -147,24 +165,29 @@ while True:
 
     try:
 
-        print("Iniciando medición de temperatura (60 segundos)...")
+        print("Iniciando medición de temperatura y humedad (60 segundos)...")
         suma_temperaturas = 0
+        suma_humedades = 0
         
         for _ in range(60):
             led.toggle()
             suma_temperaturas += leer_temperatura()
+            suma_humedades += leer_humedad()
             time.sleep(1)
             
         temperatura_media = round(suma_temperaturas / 60, 2)
+        humedad_media = round(suma_humedades / 60, 1)
 
-        print("Temperatura Media:", temperatura_media)
+        print("Temperatura media:", temperatura_media, "°C")
+        print("Humedad media:", humedad_media, "%")
         print("Fecha:", fecha_iso())
 
         token = login_api()
 
         enviar_datos(
             token,
-            temperatura_media
+            temperatura_media,
+            humedad_media
         )
 
         led.on()
