@@ -140,19 +140,12 @@ def enviar_datos(token, temperatura, humedad):
     r.close()
 
 
-def esperar_hasta_medicion():
-
-    ahora = time.localtime()
-    
-    if ahora[4] == 59:
-        segundos_espera = (59 * 60) + (60 - ahora[5])
-    else:
-        minutos_restantes = 58 - ahora[4]
-        segundos_restantes = 60 - ahora[5]
-        segundos_espera = (minutos_restantes * 60) + segundos_restantes
+def esperar_hasta_siguiente_minuto():
+    """Alinea cada ciclo de medición con el siguiente minuto."""
+    segundos_actuales = time.localtime()[5]
+    segundos_espera = 60 - segundos_actuales
 
     print("Esperando", segundos_espera, "segundos para iniciar la medición")
-    
     time.sleep(segundos_espera)
 
 
@@ -161,7 +154,7 @@ sincronizar_hora()
 
 while True:
 
-    esperar_hasta_medicion()
+    esperar_hasta_siguiente_minuto()
 
     try:
 
