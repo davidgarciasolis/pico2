@@ -52,6 +52,7 @@ function toLocalDateString(date) {
 
 function buildDateRangeParams(desde, hasta) {
   const params = new URLSearchParams();
+  params.set("fields", "fecha,temperatura,humedad");
   params.set("sort", "fecha");
   params.set("limit", "1000");
 
@@ -113,18 +114,26 @@ async function cargarDatos() {
       .filter((dato) => dato && (dato.fecha || dato.timestamp))
       .sort((a, b) => new Date(a.fecha || a.timestamp) - new Date(b.fecha || b.timestamp));
 
-    const datosValidos = datosOrdenados.filter((dato) => Number.isFinite(Number(dato.temperatura)));
+    const datosValidos = datosOrdenados.filter(
+      (dato) =>
+        tieneValorNumerico(dato.temperatura) || tieneValorNumerico(dato.humedad),
+    );
 
     if (!datosValidos.length) {
       estado.textContent = "No hay registros válidos en el rango seleccionado.";
       ultimaActualizacion.textContent = formatRangeLabel(fechaDesde, fechaHasta);
-      actualizarResumen([], fechaDesde, fechaHasta, null);
-      dibujarGrafica([], []);
+      actualizarResumen([], [], fechaDesde, fechaHasta, null);
+      dibujarGrafica([], [], []);
       return;
     }
 
     const labels = datosValidos.map((dato) => formatChartLabel(dato.fecha || dato.timestamp));
-    const temperaturas = datosValidos.map((dato) => Number(dato.temperatura));
+    const temperaturas = datosValidos.map((dato) =>
+      tieneValorNumerico(dato.temperatura) ? Number(dato.temperatura) : null,
+    );
+    const humedades = datosValidos.map((dato) =>
+      tieneValorNumerico(dato.humedad) ? Number(dato.humedad) : null,
+    );
     const ultimoDato = datosValidos[datosValidos.length - 1];
 
     estado.textContent = `Mostrando ${datosValidos.length} registros entre ${formatDisplayRange(
@@ -135,8 +144,8 @@ async function cargarDatos() {
       ultimoDato.fecha || ultimoDato.timestamp,
     )}`;
 
-    actualizarResumen(temperaturas, fechaDesde, fechaHasta, ultimoDato);
-    dibujarGrafica(labels, temperaturas);
+    actualizarResumen(temperaturas, humedades, fechaDesde, fechaHasta, ultimoDato);
+    dibujarGrafica(labels, temperaturas, humedades);
   } catch (err) {
     if (err.name === "AbortError") {
       return;
@@ -145,8 +154,8 @@ async function cargarDatos() {
     console.error("Error cargando datos:", err);
     estado.textContent = "Error al obtener datos de la API.";
     ultimaActualizacion.textContent = "No se pudo actualizar la vista.";
-    actualizarResumen([], fechaDesde, fechaHasta, null);
-    dibujarGrafica([], []);
+    actualizarResumen([], [], fechaDesde, fechaHasta, null);
+    dibujarGrafica([], [], []);
   } finally {
     if (requestId === activeRequest) {
       setLoadingState(false, btnActualizar, fechaDesdeInput, fechaHastaInput);
@@ -162,7 +171,7 @@ function setLoadingState(isLoading, button, ...inputs) {
   });
 }
 
-function dibujarGrafica(labels, data) {
+function dibujarGrafica(labels, temperaturas, humedades) {
   const canvas = document.getElementById("grafica");
   const ctx = canvas.getContext("2d");
 
@@ -170,7 +179,7 @@ function dibujarGrafica(labels, data) {
     chart.destroy();
   }
 
-  if (!labels.length || !data.length) {
+  if (!labels.length) {
     chart = new Chart(ctx, {
       type: "line",
       data: { labels: [], datasets: [] },
@@ -195,9 +204,9 @@ function dibujarGrafica(labels, data) {
     return;
   }
 
-  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height || 360);
-  gradient.addColorStop(0, "rgba(234, 88, 12, 0.28)");
-  gradient.addColorStop(1, "rgba(234, 88, 12, 0.02)");
+  const temperaturaGradient = ctx.createLinearGradient(0, 0, 0, canvas.height || 360);
+  temperaturaGradient.addColorStop(0, "rgba(234, 88, 12, 0.28)");
+  temperaturaGradient.addColorStop(1, "rgba(234, 88, 12, 0.02)");
 
   chart = new Chart(ctx, {
     type: "line",
@@ -206,9 +215,10 @@ function dibujarGrafica(labels, data) {
       datasets: [
         {
           label: "Temperatura (°C)",
-          data,
+          data: temperaturas,
+          yAxisID: "temperatura",
           borderColor: "#ea580c",
-          backgroundColor: gradient,
+          backgroundColor: temperaturaGradient,
           tension: 0.33,
           fill: true,
           borderWidth: 3,
@@ -217,6 +227,22 @@ function dibujarGrafica(labels, data) {
           pointBackgroundColor: "#ffffff",
           pointBorderColor: "#ea580c",
           pointHoverBorderWidth: 3,
+        },
+        {
+          label: "Humedad (%)",
+          data: humedades,
+          yAxisID: "humedad",
+          borderColor: "#0284c7",
+          backgroundColor: "transparent",
+          tension: 0.33,
+          fill: false,
+          borderWidth: 3,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#0284c7",
+          pointHoverBorderWidth: 3,
+          spanGaps: true,
         },
       ],
     },
@@ -229,7 +255,13 @@ function dibujarGrafica(labels, data) {
       },
       plugins: {
         legend: {
-          display: false,
+          display: true,
+          position: "top",
+          labels: {
+            boxWidth: 12,
+            usePointStyle: true,
+            color: "#475569",
+          },
         },
         tooltip: {
           displayColors: false,
@@ -242,13 +274,30 @@ function dibujarGrafica(labels, data) {
         },
       },
       scales: {
-        y: {
+        temperatura: {
+          type: "linear",
+          position: "left",
           grid: {
             color: "rgba(148, 163, 184, 0.2)",
           },
           ticks: {
             color: "#475569",
             padding: 8,
+            callback: (value) => `${value} °C`,
+          },
+        },
+        humedad: {
+          type: "linear",
+          position: "right",
+          min: 0,
+          max: 100,
+          grid: {
+            drawOnChartArea: false,
+          },
+          ticks: {
+            color: "#0284c7",
+            padding: 8,
+            callback: (value) => `${value} %`,
           },
         },
         x: {
@@ -267,31 +316,47 @@ function dibujarGrafica(labels, data) {
   });
 }
 
-function actualizarResumen(temperaturas, fechaDesde, fechaHasta, ultimoDato) {
+function actualizarResumen(temperaturas, humedades, fechaDesde, fechaHasta, ultimoDato) {
   const registrosEl = document.getElementById("metric-registros");
-  const mediaEl = document.getElementById("metric-media");
+  const temperaturaMediaEl = document.getElementById("metric-temperatura-media");
+  const humedadMediaEl = document.getElementById("metric-humedad-media");
   const rangoEl = document.getElementById("metric-rango");
+  const temperaturasValidas = temperaturas.filter(Number.isFinite);
+  const humedadesValidas = humedades.filter(Number.isFinite);
 
-  if (!temperaturas.length) {
+  if (!temperaturasValidas.length && !humedadesValidas.length) {
     registrosEl.textContent = "0";
-    mediaEl.textContent = "--";
+    temperaturaMediaEl.textContent = "--";
+    humedadMediaEl.textContent = "--";
     rangoEl.textContent = formatRangeLabel(fechaDesde, fechaHasta);
     return;
   }
 
-  const suma = temperaturas.reduce((acc, value) => acc + value, 0);
-  const media = suma / temperaturas.length;
-  const min = Math.min(...temperaturas);
-  const max = Math.max(...temperaturas);
+  const mediaTemperatura = calcularMedia(temperaturasValidas);
+  const mediaHumedad = calcularMedia(humedadesValidas);
+  const min = temperaturasValidas.length ? Math.min(...temperaturasValidas) : null;
+  const max = temperaturasValidas.length ? Math.max(...temperaturasValidas) : null;
 
-  registrosEl.textContent = String(temperaturas.length);
-  mediaEl.textContent = `${media.toFixed(1)} °C`;
+  registrosEl.textContent = String(Math.max(temperaturasValidas.length, humedadesValidas.length));
+  temperaturaMediaEl.textContent = Number.isFinite(mediaTemperatura)
+    ? `${mediaTemperatura.toFixed(1)} °C`
+    : "--";
+  humedadMediaEl.textContent = Number.isFinite(mediaHumedad) ? `${mediaHumedad.toFixed(1)} %` : "--";
 
-  if (ultimoDato) {
+  if (ultimoDato && temperaturasValidas.length) {
     rangoEl.textContent = `${min.toFixed(1)} - ${max.toFixed(1)} °C`;
   } else {
     rangoEl.textContent = formatRangeLabel(fechaDesde, fechaHasta);
   }
+}
+
+function calcularMedia(valores) {
+  if (!valores.length) return null;
+  return valores.reduce((acc, value) => acc + value, 0) / valores.length;
+}
+
+function tieneValorNumerico(valor) {
+  return valor !== null && valor !== "" && valor !== undefined && Number.isFinite(Number(valor));
 }
 
 function formatRangeLabel(desde, hasta) {

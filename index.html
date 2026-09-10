@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gráfico de Temperaturas</title>
+    <title>Monitoreo de temperatura y humedad</title>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -20,10 +20,10 @@
       <header class="page-header">
         <div class="hero-copy">
           <span class="eyebrow">Monitoreo ambiental</span>
-          <h1>Temperaturas en tiempo real</h1>
+          <h1>Temperatura y humedad en tiempo real</h1>
           <p>
-            Revisa la evolución histórica, filtra por fechas y detecta picos o
-            caídas de un vistazo.
+            Revisa la evolución histórica de ambas mediciones, filtra por
+            fechas y detecta cambios de un vistazo.
           </p>
         </div>
         <div class="hero-badge" aria-label="Estado general">
@@ -57,10 +57,14 @@
         </article>
         <article class="metric-card">
           <span class="metric-label">Temperatura media</span>
-          <strong id="metric-media">--</strong>
+          <strong id="metric-temperatura-media">--</strong>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Rango</span>
+          <span class="metric-label">Humedad media</span>
+          <strong id="metric-humedad-media">--</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Rango de temperatura</span>
           <strong id="metric-rango">--</strong>
         </article>
       </section>
@@ -69,9 +73,9 @@
         <div class="panel-header">
           <div>
             <p class="panel-kicker">Tendencia</p>
-            <h2>Registro histórico de temperatura</h2>
+            <h2>Registro histórico de mediciones</h2>
           </div>
-          <p class="panel-note">La curva se adapta al rango elegido.</p>
+          <p class="panel-note">Temperatura en °C y humedad en %.</p>
         </div>
         <div class="chart-shell">
           <canvas id="grafica"></canvas>
