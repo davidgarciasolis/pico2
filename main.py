@@ -22,21 +22,35 @@ led = machine.Pin("LED", machine.Pin.OUT)
 
 
 def conectar_wifi():
+    """Intenta conectarse durante 10 segundos sin bloquear el programa."""
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
 
-    if not wlan.isconnected():
+    if wlan.isconnected():
+        print("WiFi conectado")
+        return True
+
+    try:
         wlan.connect(WIFI_SSID, WIFI_PASS)
+    except Exception as e:
+        print("No se pudo iniciar la conexión WiFi:", e)
+        led.off()
+        return False
 
-        while not wlan.isconnected():
-            led.toggle()
-            print("Conectando WiFi...")
-            time.sleep(0.5)
+    for _ in range(20):
+        if wlan.isconnected():
+            led.on()
+            print("WiFi conectado")
+            print(wlan.ifconfig())
+            return True
 
-    led.on()
+        led.toggle()
+        print("Conectando WiFi...")
+        time.sleep(0.5)
 
-    print("WiFi conectado")
-    print(wlan.ifconfig())
+    print("No se pudo conectar al WiFi. Se reintentará dentro de una hora.")
+    led.off()
+    return False
 
 
 def sincronizar_hora():
@@ -140,23 +154,37 @@ def enviar_datos(token, temperatura, humedad):
     r.close()
 
 
-def esperar_hasta_siguiente_minuto():
-    """Alinea cada ciclo de medición con el siguiente minuto."""
-    segundos_actuales = time.localtime()[5]
-    segundos_espera = 60 - segundos_actuales
+def esperar_hasta_siguiente_hora():
+    """Alinea cada ciclo de medición con el comienzo de la próxima hora."""
+    ahora = time.localtime()
+    segundos_actuales = ahora[4] * 60 + ahora[5]
+    segundos_espera = 3600 - segundos_actuales
 
     print("Esperando", segundos_espera, "segundos para iniciar la medición")
     time.sleep(segundos_espera)
 
 
-conectar_wifi()
-sincronizar_hora()
+if conectar_wifi():
+    try:
+        sincronizar_hora()
+    except Exception as e:
+        print("No se pudo sincronizar la hora:", e)
 
 while True:
 
-    esperar_hasta_siguiente_minuto()
+    esperar_hasta_siguiente_hora()
 
     try:
+
+        # Si el router estaba apagado al arrancar, aquí se reintenta cada hora.
+        if not conectar_wifi():
+            continue
+
+        try:
+            sincronizar_hora()
+        except Exception as e:
+            # La falta de NTP no debe impedir el envío si la API está disponible.
+            print("No se pudo sincronizar la hora:", e)
 
         print("Iniciando medición de temperatura y humedad (60 segundos)...")
         suma_temperaturas = 0
