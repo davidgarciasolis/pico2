@@ -3,6 +3,7 @@ import ntptime
 import machine
 import time
 import urequests
+import socket
 from secrets import *
 
 # Sensor temperatura TMP36 (GP28)
@@ -20,11 +21,33 @@ LECTURA_HUMEDO = 20000
 # LED integrado Pico 2W
 led = machine.Pin("LED", machine.Pin.OUT)
 
+# Red local del dispositivo. La máscara /23 equivale a 255.255.254.0.
+IP_FIJA = "192.168.0.5"
+MASCARA_RED = "255.255.254.0"
+PUERTA_ENLACE = "192.168.0.1"
+DNS = PUERTA_ENLACE
+
+# Última lectura disponible para la página local.
+ultima_medicion = {
+    "temperatura": None,
+    "humedad": None,
+    "fecha": None,
+}
+servidor = None
+
 
 def conectar_wifi():
     """Intenta conectarse durante 10 segundos sin bloquear el programa."""
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
+
+    # Debe hacerse antes de connect(). Reserva esta IP en el router o verifica
+    # que ningún otro equipo la esté usando para evitar un conflicto de IP.
+    try:
+        wlan.ifconfig((IP_FIJA, MASCARA_RED, PUERTA_ENLACE, DNS))
+    except Exception as e:
+        print("No se pudo configurar la IP fija:", e)
+        return False
 
     if wlan.isconnected():
         print("WiFi conectado")
@@ -51,6 +74,85 @@ def conectar_wifi():
     print("No se pudo conectar al WiFi. Se reintentará dentro de una hora.")
     led.off()
     return False
+
+
+def iniciar_servidor_web():
+    """Inicia una página HTTP local no bloqueante en el puerto 80."""
+    global servidor
+
+    if servidor is not None:
+        return
+
+    direccion = socket.getaddrinfo("0.0.0.0", 80)[0][-1]
+    servidor = socket.socket()
+    servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    servidor.bind(direccion)
+    servidor.listen(1)
+    servidor.settimeout(0)
+    print("Servidor web disponible en http://{}/".format(IP_FIJA))
+
+
+def pagina_web():
+    """Genera la página con la última lectura realizada por la Pico."""
+    temperatura = ultima_medicion["temperatura"]
+    humedad = ultima_medicion["humedad"]
+    fecha = ultima_medicion["fecha"]
+
+    temperatura_txt = "--" if temperatura is None else "{} &deg;C".format(temperatura)
+    humedad_txt = "--" if humedad is None else "{} %".format(humedad)
+    fecha_txt = "Aún no hay mediciones" if fecha is None else fecha
+
+    return """<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sensor ambiental</title>
+<style>body{margin:0;font-family:system-ui,sans-serif;background:#f1f5f9;color:#0f172a}.contenedor{max-width:680px;margin:8vh auto;padding:24px}h1{margin-bottom:8px}.fecha{color:#64748b}.medidas{display:flex;gap:16px;flex-wrap:wrap;margin-top:24px}.medida{flex:1;min-width:220px;padding:24px;border-radius:16px;background:#fff;box-shadow:0 8px 22px #0f172a18}.etiqueta{color:#64748b;font-size:.9rem;text-transform:uppercase;letter-spacing:.08em}.valor{font-size:2.4rem;font-weight:700;margin-top:8px}button{margin-top:24px;padding:12px 18px;border:0;border-radius:10px;background:#ea580c;color:#fff;font:inherit;font-weight:700;cursor:pointer}button:active{transform:scale(.98)}</style>
+</head><body><main class="contenedor"><h1>Sensor ambiental</h1><p class="fecha">Última lectura: {}</p><section class="medidas"><article class="medida"><div class="etiqueta">Temperatura</div><div class="valor">{}</div></article><article class="medida"><div class="etiqueta">Humedad del suelo</div><div class="valor">{}</div></article></section><form action="/medir" method="get"><button type="submit">Medir ahora</button></form></main></body></html>""".format(fecha_txt, temperatura_txt, humedad_txt)
+
+
+def medir_desde_web():
+    """Actualiza la lectura bajo demanda, sin enviarla a la API remota."""
+    ultima_medicion["temperatura"] = leer_temperatura()
+    ultima_medicion["humedad"] = leer_humedad()
+    ultima_medicion["fecha"] = fecha_iso()
+    print("Medición solicitada desde la web:", ultima_medicion)
+
+
+def atender_web():
+    """Atiende como máximo una petición para que las mediciones continúen."""
+    if servidor is None:
+        return
+
+    try:
+        cliente, _ = servidor.accept()
+    except OSError:
+        return
+
+    try:
+        cliente.settimeout(1)
+        peticion = cliente.recv(512).decode("utf-8")
+        linea = peticion.split("\r\n", 1)[0]
+
+        if linea.startswith("GET /medir"):
+            medir_desde_web()
+            respuesta = "HTTP/1.1 303 See Other\r\nLocation: /\r\nConnection: close\r\n\r\n"
+            cliente.send(respuesta)
+            return
+
+        cuerpo = pagina_web()
+        respuesta = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n" + cuerpo
+        cliente.send(respuesta)
+    except Exception as e:
+        print("Error atendiendo la web:", e)
+    finally:
+        cliente.close()
+
+
+def esperar_con_web(segundos):
+    """Espera sin dejar de responder peticiones HTTP."""
+    fin = time.time() + segundos
+    while time.time() < fin:
+        atender_web()
+        time.sleep(0.1)
 
 
 def sincronizar_hora():
@@ -161,14 +263,24 @@ def esperar_hasta_siguiente_hora():
     segundos_espera = 3600 - segundos_actuales
 
     print("Esperando", segundos_espera, "segundos para iniciar la medición")
-    time.sleep(segundos_espera)
+    esperar_con_web(segundos_espera)
 
 
 if conectar_wifi():
+    iniciar_servidor_web()
     try:
         sincronizar_hora()
     except Exception as e:
         print("No se pudo sincronizar la hora:", e)
+
+    # Ofrece un valor desde el arranque; los ciclos posteriores publican la
+    # media de 60 segundos tanto en esta página como en la API.
+    try:
+        ultima_medicion["temperatura"] = leer_temperatura()
+        ultima_medicion["humedad"] = leer_humedad()
+        ultima_medicion["fecha"] = fecha_iso()
+    except Exception as e:
+        print("No se pudo obtener la lectura inicial:", e)
 
 while True:
 
@@ -179,6 +291,8 @@ while True:
         # Si el router estaba apagado al arrancar, aquí se reintenta cada hora.
         if not conectar_wifi():
             continue
+
+        iniciar_servidor_web()
 
         try:
             sincronizar_hora()
@@ -194,7 +308,8 @@ while True:
             led.toggle()
             suma_temperaturas += leer_temperatura()
             suma_humedades += leer_humedad()
-            time.sleep(1)
+            # La página sigue respondiendo mientras se calcula la media.
+            esperar_con_web(1)
             
         temperatura_media = round(suma_temperaturas / 60, 2)
         humedad_media = round(suma_humedades / 60, 1)
@@ -202,6 +317,10 @@ while True:
         print("Temperatura media:", temperatura_media, "°C")
         print("Humedad media:", humedad_media, "%")
         print("Fecha:", fecha_iso())
+
+        ultima_medicion["temperatura"] = temperatura_media
+        ultima_medicion["humedad"] = humedad_media
+        ultima_medicion["fecha"] = fecha_iso()
 
         token = login_api()
 
