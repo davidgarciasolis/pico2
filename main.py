@@ -33,7 +33,9 @@ led = machine.Pin("LED", machine.Pin.OUT)
 IP_FIJA = "192.168.0.5"
 MASCARA_RED = "255.255.254.0"
 PUERTA_ENLACE = "192.168.0.1"
-DNS = PUERTA_ENLACE
+# El router de esta red no resuelve DNS para la Pico con IP estática. Se usa
+# Cloudflare para resolver NTP y api.mueblesavenida.com.
+DNS = "1.1.1.1"
 
 # Última lectura disponible para la página local.
 ultima_medicion = {
