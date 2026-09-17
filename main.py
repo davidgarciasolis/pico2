@@ -29,7 +29,11 @@ LECTURA_HUMEDO = 20000
 # LED integrado Pico 2W
 led = machine.Pin("LED", machine.Pin.OUT)
 
-# La configuración de red se obtiene por DHCP al conectar al WiFi.
+# Configuración de red fija, obtenida de la concesión DHCP mostrada en consola.
+IP_FIJA = "192.168.0.5"
+MASCARA_RED = "255.255.254.0"
+PUERTA_ENLACE = "192.168.0.1"
+DNS = "100.100.1.1"
 
 # Última lectura disponible para la página local.
 ultima_medicion = {
@@ -57,9 +61,15 @@ def escapar_html(texto):
 
 
 def conectar_wifi():
-    """Intenta conectarse al WiFi y espera hasta 10 segundos por DHCP."""
+    """Conecta al WiFi con la configuración de red fija."""
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
+
+    try:
+        wlan.ifconfig((IP_FIJA, MASCARA_RED, PUERTA_ENLACE, DNS))
+    except Exception as e:
+        registrar("No se pudo configurar la IP fija:", e)
+        return False
 
     if wlan.isconnected():
         registrar("WiFi conectado")
@@ -67,8 +77,7 @@ def conectar_wifi():
         return True
 
     try:
-        # En la Pico W/Pico 2 W connect() negocia DHCP tras asociarse al AP.
-        # Pedir DHCP antes de esta asociación provoca el timeout observado.
+        # La IP ya está configurada; solo falta asociarse al punto de acceso.
         wlan.connect(WIFI_SSID, WIFI_PASS)
     except Exception as e:
         registrar("No se pudo iniciar la conexión WiFi:", e)
