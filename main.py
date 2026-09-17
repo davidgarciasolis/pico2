@@ -29,13 +29,7 @@ LECTURA_HUMEDO = 20000
 # LED integrado Pico 2W
 led = machine.Pin("LED", machine.Pin.OUT)
 
-# Red local del dispositivo. La máscara /23 equivale a 255.255.254.0.
-IP_FIJA = "192.168.0.5"
-MASCARA_RED = "255.255.254.0"
-PUERTA_ENLACE = "192.168.0.1"
-# El router de esta red no resuelve DNS para la Pico con IP estática. Se usa
-# Cloudflare para resolver NTP y api.mueblesavenida.com.
-DNS = "1.1.1.1"
+# La configuración de red se obtiene por DHCP al conectar al WiFi.
 
 # Última lectura disponible para la página local.
 ultima_medicion = {
@@ -67,12 +61,11 @@ def conectar_wifi():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
 
-    # Debe hacerse antes de connect(). Reserva esta IP en el router o verifica
-    # que ningún otro equipo la esté usando para evitar un conflicto de IP.
+    # Solicita dirección, máscara, puerta de enlace y DNS al router por DHCP.
     try:
-        wlan.ifconfig((IP_FIJA, MASCARA_RED, PUERTA_ENLACE, DNS))
+        wlan.ifconfig("dhcp")
     except Exception as e:
-        registrar("No se pudo configurar la IP fija:", e)
+        registrar("No se pudo habilitar DHCP:", e)
         return False
 
     if wlan.isconnected():
@@ -115,7 +108,8 @@ def iniciar_servidor_web():
     servidor.bind(direccion)
     servidor.listen(1)
     servidor.settimeout(0)
-    registrar("Servidor web disponible en http://{}/".format(IP_FIJA))
+    ip = network.WLAN(network.STA_IF).ifconfig()[0]
+    registrar("Servidor web disponible en http://{}/".format(ip))
 
 
 def pagina_web():
