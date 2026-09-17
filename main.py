@@ -215,6 +215,29 @@ def extraer_archivo_multipart(cabecera, cuerpo):
     return archivo.decode("utf-8")
 
 
+def extraer_password_multipart(cabecera, cuerpo):
+    """Obtiene la contraseña de un formulario multipart sencillo."""
+    limite = "boundary="
+    posicion = cabecera.lower().find(limite)
+    if posicion == -1:
+        raise ValueError("Formulario de reinicio inválido")
+
+    boundary = cabecera[posicion + len(limite):].split("\r\n", 1)[0].encode()
+    for parte in cuerpo.split(b"--" + boundary):
+        if b"\r\n\r\n" not in parte:
+            continue
+        info, contenido = parte.split(b"\r\n\r\n", 1)
+        if b'name="password"' in info:
+            return contenido.rstrip(b"\r\n").decode("utf-8")
+
+    raise ValueError("No se recibió la contraseña")
+
+
+def pagina_reinicio():
+    """Muestra una confirmación para reiniciar la Pico desde la red local."""
+    return """<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reiniciar Pico</title><style>body{font-family:system-ui,sans-serif;max-width:620px;margin:10vh auto;padding:24px}label,input,button{display:block;margin-top:12px}button{padding:10px 16px}</style><h1>Reiniciar Pico</h1><p>La conexión se cerrará durante unos segundos.</p><form action="/reiniciar" method="post" enctype="multipart/form-data"><label>Contraseña OTA <input name="password" type="password" required></label><button type="submit">Reiniciar ahora</button></form><p><a href="/">Cancelar</a></p></html>"""
+
+
 def actualizar_main(codigo):
     """Valida y sustituye main.py conservando la versión anterior."""
     compile(codigo, "main.py", "exec")
@@ -249,6 +272,24 @@ def atender_web():
             medir_desde_web()
             respuesta = "HTTP/1.1 303 See Other\r\nLocation: /\r\nConnection: close\r\n\r\n"
             cliente.send(respuesta)
+            return
+
+        if linea.startswith("GET /reiniciar"):
+            responder(cliente, "200 OK", pagina_reinicio())
+            return
+
+        if linea.startswith("POST /reiniciar"):
+            try:
+                password = extraer_password_multipart(cabecera, cuerpo)
+                if not OTA_PASSWORD or password != OTA_PASSWORD:
+                    raise ValueError("Contraseña de reinicio incorrecta")
+                responder(cliente, "200 OK", "<h1>Reinicio solicitado</h1><p>La Pico se reiniciará ahora. Espera unos segundos y vuelve a abrir la página.</p>")
+                registrar("Reinicio solicitado desde la web")
+                time.sleep(1)
+                machine.reset()
+            except Exception as e:
+                registrar("Error solicitando reinicio:", e)
+                responder(cliente, "400 Bad Request", "<h1>No se reinició la Pico</h1><p>{}</p><p><a href=\"/reiniciar\">Volver</a></p>".format(e))
             return
 
         if linea.startswith("POST /actualizar"):
