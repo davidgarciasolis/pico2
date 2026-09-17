@@ -35,6 +35,13 @@ MASCARA_RED = "255.255.254.0"
 PUERTA_ENLACE = "192.168.0.1"
 DNS = "100.100.1.1"
 
+# Direcciones IP de servidores NTP públicos. Usar IP evita que un fallo de
+# resolución DNS impida ajustar el reloj.
+SERVIDORES_NTP = (
+    "162.159.200.1",     # time.cloudflare.com
+    "216.239.32.15",     # time.google.com
+)
+
 # Última lectura disponible para la página local.
 ultima_medicion = {
     "temperatura": None,
@@ -272,8 +279,20 @@ def esperar_con_web(segundos):
 
 
 def sincronizar_hora():
-    ntptime.settime()
-    registrar("Hora sincronizada")
+    """Sincroniza el reloj sin depender de la resolución DNS."""
+    ultimo_error = None
+
+    for servidor_ntp in SERVIDORES_NTP:
+        try:
+            ntptime.host = servidor_ntp
+            ntptime.settime()
+            registrar("Hora sincronizada con", servidor_ntp)
+            return
+        except Exception as e:
+            ultimo_error = e
+            registrar("No se pudo sincronizar con", servidor_ntp + ":", e)
+
+    raise ultimo_error
 
 
 def leer_temperatura():
