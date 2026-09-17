@@ -4,7 +4,15 @@ import machine
 import time
 import urequests
 import socket
+import os
 from secrets import *
+
+# Añade OTA_PASSWORD a secrets.py antes de usar la actualización web.
+# No se guarda en main.py ni se expone en la página.
+try:
+    OTA_PASSWORD
+except NameError:
+    OTA_PASSWORD = None
 
 # Sensor temperatura TMP36 (GP28)
 sensor_temp = machine.ADC(28)
@@ -34,6 +42,22 @@ ultima_medicion = {
     "fecha": None,
 }
 servidor = None
+MAX_TAMANO_MAIN = 32 * 1024
+MAX_LOGS = 40
+logs = []
+
+
+def registrar(*valores):
+    """Muestra el mensaje por consola y conserva las últimas líneas web."""
+    mensaje = " ".join(str(valor) for valor in valores)
+    print(mensaje)
+    logs.append(mensaje)
+    if len(logs) > MAX_LOGS:
+        logs.pop(0)
+
+
+def escapar_html(texto):
+    return str(texto).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def conectar_wifi():
@@ -46,32 +70,32 @@ def conectar_wifi():
     try:
         wlan.ifconfig((IP_FIJA, MASCARA_RED, PUERTA_ENLACE, DNS))
     except Exception as e:
-        print("No se pudo configurar la IP fija:", e)
+        registrar("No se pudo configurar la IP fija:", e)
         return False
 
     if wlan.isconnected():
-        print("WiFi conectado")
+        registrar("WiFi conectado")
         return True
 
     try:
         wlan.connect(WIFI_SSID, WIFI_PASS)
     except Exception as e:
-        print("No se pudo iniciar la conexión WiFi:", e)
+        registrar("No se pudo iniciar la conexión WiFi:", e)
         led.off()
         return False
 
     for _ in range(20):
         if wlan.isconnected():
             led.on()
-            print("WiFi conectado")
-            print(wlan.ifconfig())
+            registrar("WiFi conectado")
+            registrar(wlan.ifconfig())
             return True
 
         led.toggle()
-        print("Conectando WiFi...")
+        registrar("Conectando WiFi...")
         time.sleep(0.5)
 
-    print("No se pudo conectar al WiFi. Se reintentará dentro de una hora.")
+    registrar("No se pudo conectar al WiFi. Se reintentará dentro de una hora.")
     led.off()
     return False
 
@@ -89,7 +113,7 @@ def iniciar_servidor_web():
     servidor.bind(direccion)
     servidor.listen(1)
     servidor.settimeout(0)
-    print("Servidor web disponible en http://{}/".format(IP_FIJA))
+    registrar("Servidor web disponible en http://{}/".format(IP_FIJA))
 
 
 def pagina_web():
@@ -101,12 +125,14 @@ def pagina_web():
     temperatura_txt = "--" if temperatura is None else "{} &deg;C".format(temperatura)
     humedad_txt = "--" if humedad is None else "{} %".format(humedad)
     fecha_txt = "Aún no hay mediciones" if fecha is None else fecha
+    logs_txt = "\n".join([escapar_html(linea) for linea in logs]) or "Aún no hay logs."
 
     return """<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="5">
 <title>Sensor ambiental</title>
-<style>body{margin:0;font-family:system-ui,sans-serif;background:#f1f5f9;color:#0f172a}.contenedor{max-width:680px;margin:8vh auto;padding:24px}h1{margin-bottom:8px}.fecha{color:#64748b}.medidas{display:flex;gap:16px;flex-wrap:wrap;margin-top:24px}.medida{flex:1;min-width:220px;padding:24px;border-radius:16px;background:#fff;box-shadow:0 8px 22px #0f172a18}.etiqueta{color:#64748b;font-size:.9rem;text-transform:uppercase;letter-spacing:.08em}.valor{font-size:2.4rem;font-weight:700;margin-top:8px}button{margin-top:24px;padding:12px 18px;border:0;border-radius:10px;background:#ea580c;color:#fff;font:inherit;font-weight:700;cursor:pointer}button:active{transform:scale(.98)}</style>
-</head><body><main class="contenedor"><h1>Sensor ambiental</h1><p class="fecha">Última lectura: __FECHA__</p><section class="medidas"><article class="medida"><div class="etiqueta">Temperatura</div><div class="valor">__TEMPERATURA__</div></article><article class="medida"><div class="etiqueta">Humedad del suelo</div><div class="valor">__HUMEDAD__</div></article></section><form action="/medir" method="get"><button type="submit">Medir ahora</button></form></main></body></html>""".replace("__FECHA__", fecha_txt).replace("__TEMPERATURA__", temperatura_txt).replace("__HUMEDAD__", humedad_txt)
+<style>body{margin:0;font-family:system-ui,sans-serif;background:#f1f5f9;color:#0f172a}.contenedor{max-width:680px;margin:8vh auto;padding:24px}h1{margin-bottom:8px}.fecha{color:#64748b}.medidas{display:flex;gap:16px;flex-wrap:wrap;margin-top:24px}.medida{flex:1;min-width:220px;padding:24px;border-radius:16px;background:#fff;box-shadow:0 8px 22px #0f172a18}.etiqueta{color:#64748b;font-size:.9rem;text-transform:uppercase;letter-spacing:.08em}.valor{font-size:2.4rem;font-weight:700;margin-top:8px}button{margin-top:24px;padding:12px 18px;border:0;border-radius:10px;background:#ea580c;color:#fff;font:inherit;font-weight:700;cursor:pointer}button:active{transform:scale(.98)}pre{max-height:280px;overflow:auto;padding:14px;border-radius:10px;background:#0f172a;color:#d1fae5;font:12px/1.5 monospace;white-space:pre-wrap}</style>
+</head><body><main class="contenedor"><h1>Sensor ambiental</h1><p class="fecha">Última lectura: __FECHA__</p><section class="medidas"><article class="medida"><div class="etiqueta">Temperatura</div><div class="valor">__TEMPERATURA__</div></article><article class="medida"><div class="etiqueta">Humedad del suelo</div><div class="valor">__HUMEDAD__</div></article></section><form action="/medir" method="get"><button type="submit">Medir ahora</button></form><hr><h2>Logs de ejecución</h2><p class="fecha">La vista se recarga cada 5 segundos; no realiza una medición.</p><pre>__LOGS__</pre><hr><h2>Actualizar programa</h2><form action="/actualizar" method="post" enctype="multipart/form-data"><label>Archivo main.py <input name="archivo" type="file" accept=".py" required></label><label>Contraseña <input name="password" type="password" required></label><button type="submit">Subir y aplicar</button></form><p class="fecha">Se conserva una copia como main.py.bak. Reinicia la Pico tras una actualización correcta.</p></main></body></html>""".replace("__FECHA__", fecha_txt).replace("__TEMPERATURA__", temperatura_txt).replace("__HUMEDAD__", humedad_txt).replace("__LOGS__", logs_txt)
 
 
 def medir_desde_web():
@@ -114,7 +140,87 @@ def medir_desde_web():
     ultima_medicion["temperatura"] = leer_temperatura()
     ultima_medicion["humedad"] = leer_humedad()
     ultima_medicion["fecha"] = fecha_iso()
-    print("Medición solicitada desde la web:", ultima_medicion)
+    registrar("Medición solicitada desde la web:", ultima_medicion)
+
+
+def responder(cliente, estado, cuerpo, tipo="text/html; charset=utf-8"):
+    cabecera = "HTTP/1.1 {}\r\nContent-Type: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".format(estado, tipo)
+    cliente.send(cabecera + cuerpo)
+
+
+def recibir_peticion(cliente):
+    """Recibe la petición completa, con un límite seguro para la Pico."""
+    datos = b""
+    while b"\r\n\r\n" not in datos and len(datos) <= 2048:
+        bloque = cliente.recv(512)
+        if not bloque:
+            break
+        datos += bloque
+
+    cabecera, cuerpo = datos.split(b"\r\n\r\n", 1)
+    texto_cabecera = cabecera.decode("utf-8")
+    tamano = 0
+    for linea in texto_cabecera.split("\r\n"):
+        if linea.lower().startswith("content-length:"):
+            tamano = int(linea.split(":", 1)[1].strip())
+            break
+
+    if tamano > MAX_TAMANO_MAIN + 1024:
+        raise ValueError("El archivo supera el máximo de 32 KB")
+
+    while len(cuerpo) < tamano:
+        bloque = cliente.recv(min(1024, tamano - len(cuerpo)))
+        if not bloque:
+            raise ValueError("Carga incompleta")
+        cuerpo += bloque
+
+    return texto_cabecera, cuerpo
+
+
+def extraer_archivo_multipart(cabecera, cuerpo):
+    """Obtiene la contraseña y el contenido de main.py de un formulario."""
+    limite = "boundary="
+    posicion = cabecera.lower().find(limite)
+    if posicion == -1:
+        raise ValueError("Formulario de carga inválido")
+
+    boundary = cabecera[posicion + len(limite):].split("\r\n", 1)[0].encode()
+    password = None
+    archivo = None
+
+    for parte in cuerpo.split(b"--" + boundary):
+        if b"\r\n\r\n" not in parte:
+            continue
+        info, contenido = parte.split(b"\r\n\r\n", 1)
+        contenido = contenido.rstrip(b"\r\n")
+        if b'name="password"' in info:
+            password = contenido.decode("utf-8")
+        elif b'name="archivo"' in info:
+            archivo = contenido
+
+    if password != OTA_PASSWORD:
+        raise ValueError("Contraseña de actualización incorrecta")
+    if not archivo:
+        raise ValueError("No se recibió el archivo main.py")
+    if len(archivo) > MAX_TAMANO_MAIN:
+        raise ValueError("main.py supera el máximo de 32 KB")
+
+    return archivo.decode("utf-8")
+
+
+def actualizar_main(codigo):
+    """Valida y sustituye main.py conservando la versión anterior."""
+    compile(codigo, "main.py", "exec")
+
+    with open("main.py.tmp", "w") as fichero:
+        fichero.write(codigo)
+
+    try:
+        os.remove("main.py.bak")
+    except OSError:
+        pass
+    os.rename("main.py", "main.py.bak")
+    os.rename("main.py.tmp", "main.py")
 
 
 def atender_web():
@@ -129,8 +235,8 @@ def atender_web():
 
     try:
         cliente.settimeout(1)
-        peticion = cliente.recv(512).decode("utf-8")
-        linea = peticion.split("\r\n", 1)[0]
+        cabecera, cuerpo = recibir_peticion(cliente)
+        linea = cabecera.split("\r\n", 1)[0]
 
         if linea.startswith("GET /medir"):
             medir_desde_web()
@@ -138,11 +244,21 @@ def atender_web():
             cliente.send(respuesta)
             return
 
+        if linea.startswith("POST /actualizar"):
+            try:
+                codigo = extraer_archivo_multipart(cabecera, cuerpo)
+                actualizar_main(codigo)
+                responder(cliente, "200 OK", "<h1>Actualización aplicada</h1><p>main.py se ha guardado y la versión anterior está en main.py.bak.</p><p>Reinicia ahora la Pico para ejecutar el nuevo programa.</p>")
+                registrar("main.py actualizado desde la web")
+            except Exception as e:
+                registrar("Error actualizando main.py:", e)
+                responder(cliente, "400 Bad Request", "<h1>No se aplicó la actualización</h1><p>{}</p><p><a href=\"/\">Volver</a></p>".format(e))
+            return
+
         cuerpo = pagina_web()
-        respuesta = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n" + cuerpo
-        cliente.send(respuesta)
+        responder(cliente, "200 OK", cuerpo)
     except Exception as e:
-        print("Error atendiendo la web:", e)
+        registrar("Error atendiendo la web:", e)
     finally:
         cliente.close()
 
@@ -157,7 +273,7 @@ def esperar_con_web(segundos):
 
 def sincronizar_hora():
     ntptime.settime()
-    print("Hora sincronizada")
+    registrar("Hora sincronizada")
 
 
 def leer_temperatura():
@@ -251,7 +367,7 @@ def enviar_datos(token, temperatura, humedad):
         headers=headers
     )
 
-    print("Respuesta API:", r.text)
+    registrar("Respuesta API:", r.text)
 
     r.close()
 
@@ -262,7 +378,7 @@ def esperar_hasta_siguiente_hora():
     segundos_actuales = ahora[4] * 60 + ahora[5]
     segundos_espera = 3600 - segundos_actuales
 
-    print("Esperando", segundos_espera, "segundos para iniciar la medición")
+    registrar("Esperando", segundos_espera, "segundos para iniciar la medición")
     esperar_con_web(segundos_espera)
 
 
@@ -271,7 +387,7 @@ if conectar_wifi():
     try:
         sincronizar_hora()
     except Exception as e:
-        print("No se pudo sincronizar la hora:", e)
+        registrar("No se pudo sincronizar la hora:", e)
 
     # Ofrece un valor desde el arranque; los ciclos posteriores publican la
     # media de 60 segundos tanto en esta página como en la API.
@@ -280,7 +396,7 @@ if conectar_wifi():
         ultima_medicion["humedad"] = leer_humedad()
         ultima_medicion["fecha"] = fecha_iso()
     except Exception as e:
-        print("No se pudo obtener la lectura inicial:", e)
+        registrar("No se pudo obtener la lectura inicial:", e)
 
 while True:
 
@@ -298,9 +414,9 @@ while True:
             sincronizar_hora()
         except Exception as e:
             # La falta de NTP no debe impedir el envío si la API está disponible.
-            print("No se pudo sincronizar la hora:", e)
+            registrar("No se pudo sincronizar la hora:", e)
 
-        print("Iniciando medición de temperatura y humedad (60 segundos)...")
+        registrar("Iniciando medición de temperatura y humedad (60 segundos)...")
         suma_temperaturas = 0
         suma_humedades = 0
         
@@ -314,9 +430,9 @@ while True:
         temperatura_media = round(suma_temperaturas / 60, 2)
         humedad_media = round(suma_humedades / 60, 1)
 
-        print("Temperatura media:", temperatura_media, "°C")
-        print("Humedad media:", humedad_media, "%")
-        print("Fecha:", fecha_iso())
+        registrar("Temperatura media:", temperatura_media, "°C")
+        registrar("Humedad media:", humedad_media, "%")
+        registrar("Fecha:", fecha_iso())
 
         ultima_medicion["temperatura"] = temperatura_media
         ultima_medicion["humedad"] = humedad_media
@@ -334,6 +450,6 @@ while True:
 
     except Exception as e:
 
-        print("ERROR:", e)
+        registrar("ERROR:", e)
 
         led.off()
