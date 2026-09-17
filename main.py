@@ -57,22 +57,18 @@ def escapar_html(texto):
 
 
 def conectar_wifi():
-    """Intenta conectarse durante 10 segundos sin bloquear el programa."""
+    """Intenta conectarse al WiFi y espera hasta 10 segundos por DHCP."""
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
 
-    # Solicita dirección, máscara, puerta de enlace y DNS al router por DHCP.
-    try:
-        wlan.ifconfig("dhcp")
-    except Exception as e:
-        registrar("No se pudo habilitar DHCP:", e)
-        return False
-
     if wlan.isconnected():
         registrar("WiFi conectado")
+        registrar(wlan.ifconfig())
         return True
 
     try:
+        # En la Pico W/Pico 2 W connect() negocia DHCP tras asociarse al AP.
+        # Pedir DHCP antes de esta asociación provoca el timeout observado.
         wlan.connect(WIFI_SSID, WIFI_PASS)
     except Exception as e:
         registrar("No se pudo iniciar la conexión WiFi:", e)
@@ -90,7 +86,7 @@ def conectar_wifi():
         registrar("Conectando WiFi...")
         time.sleep(0.5)
 
-    registrar("No se pudo conectar al WiFi. Se reintentará dentro de una hora.")
+    registrar("No se pudo conectar al WiFi.")
     led.off()
     return False
 
@@ -377,21 +373,24 @@ def esperar_hasta_siguiente_hora():
     esperar_con_web(segundos_espera)
 
 
-if conectar_wifi():
-    iniciar_servidor_web()
-    try:
-        sincronizar_hora()
-    except Exception as e:
-        registrar("No se pudo sincronizar la hora:", e)
+while not conectar_wifi():
+    registrar("Reintentando WiFi dentro de 30 segundos...")
+    time.sleep(30)
 
-    # Ofrece un valor desde el arranque; los ciclos posteriores publican la
-    # media de 60 segundos tanto en esta página como en la API.
-    try:
-        ultima_medicion["temperatura"] = leer_temperatura()
-        ultima_medicion["humedad"] = leer_humedad()
-        ultima_medicion["fecha"] = fecha_iso()
-    except Exception as e:
-        registrar("No se pudo obtener la lectura inicial:", e)
+iniciar_servidor_web()
+try:
+    sincronizar_hora()
+except Exception as e:
+    registrar("No se pudo sincronizar la hora:", e)
+
+# Ofrece un valor desde el arranque; los ciclos posteriores publican la
+# media de 60 segundos tanto en esta página como en la API.
+try:
+    ultima_medicion["temperatura"] = leer_temperatura()
+    ultima_medicion["humedad"] = leer_humedad()
+    ultima_medicion["fecha"] = fecha_iso()
+except Exception as e:
+    registrar("No se pudo obtener la lectura inicial:", e)
 
 while True:
 
