@@ -36,6 +36,10 @@ SERVIDORES_NTP = (
     "216.239.32.15",     # time.google.com
 )
 
+# IP que debe asignar el router mediante una reserva DHCP para la MAC de la
+# Pico. El DHCP mantiene operativa la resolución DNS en esta red.
+IP_RESERVADA = "192.168.0.254"
+
 # Última lectura disponible para la página local.
 ultima_medicion = {
     "temperatura": None,
@@ -62,25 +66,28 @@ def escapar_html(texto):
 
 
 def conectar_wifi():
-    """Conecta al WiFi y recibe IP, puerta de enlace y DNS mediante DHCP."""
+    """Conecta al WiFi y obtiene la configuración de red por DHCP."""
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
 
+    try:
+        mac = ":".join("{:02X}".format(octeto) for octeto in wlan.config("mac"))
+        registrar("MAC WiFi de la Pico:", mac)
+    except Exception as e:
+        registrar("No se pudo leer la MAC WiFi:", repr(e))
+
     if wlan.isconnected():
+        configuracion = wlan.ifconfig()
         registrar("WiFi conectado")
-        registrar(wlan.ifconfig())
+        registrar(configuracion)
+        if configuracion[0] != IP_RESERVADA:
+            registrar("AVISO: el router no asignó la IP reservada", IP_RESERVADA)
         return True
 
     try:
-        # Restablece DHCP también si una ejecución anterior configuró una IP fija.
-        wlan.ifconfig("dhcp")
-    except Exception as e:
-        # En firmwares donde DHCP ya es el modo predeterminado, esta llamada
-        # puede no estar disponible; continuar permite que el firmware lo use.
-        registrar("DHCP ya está activo o no requiere reinicio:", repr(e))
-
-    try:
-        # La dirección de red se solicitará al punto de acceso al asociarse.
+        # En la Pico W, connect() inicia la asociación WiFi y la petición DHCP.
+        # Solicitar DHCP antes de asociarse provoca un timeout en este firmware.
+        registrar("Conectando a la red WiFi...")
         wlan.connect(WIFI_SSID, WIFI_PASS)
     except Exception as e:
         registrar("No se pudo iniciar la conexión WiFi:", e)
@@ -90,8 +97,15 @@ def conectar_wifi():
     for _ in range(20):
         if wlan.isconnected():
             led.on()
+            configuracion = wlan.ifconfig()
             registrar("WiFi conectado")
-            registrar(wlan.ifconfig())
+            registrar(configuracion)
+            if configuracion[0] == "0.0.0.0":
+                registrar("WiFi asociado, pero DHCP todavía no asignó una IP")
+                led.off()
+                return False
+            if configuracion[0] != IP_RESERVADA:
+                registrar("AVISO: el router no asignó la IP reservada", IP_RESERVADA)
             return True
 
         led.toggle()
@@ -135,11 +149,11 @@ def pagina_web():
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sensor ambiental</title>
 <style>body{margin:0;font-family:system-ui,sans-serif;background:#f1f5f9;color:#0f172a}.contenedor{max-width:680px;margin:8vh auto;padding:24px}h1{margin-bottom:8px}.fecha{color:#64748b}.medidas{display:flex;gap:16px;flex-wrap:wrap;margin-top:24px}.medida{flex:1;min-width:220px;padding:24px;border-radius:16px;background:#fff;box-shadow:0 8px 22px #0f172a18}.etiqueta{color:#64748b;font-size:.9rem;text-transform:uppercase;letter-spacing:.08em}.valor{font-size:2.4rem;font-weight:700;margin-top:8px}button{margin-top:24px;padding:12px 18px;border:0;border-radius:10px;background:#ea580c;color:#fff;font:inherit;font-weight:700;cursor:pointer}button:active{transform:scale(.98)}pre{max-height:280px;overflow:auto;padding:14px;border-radius:10px;background:#0f172a;color:#d1fae5;font:12px/1.5 monospace;white-space:pre-wrap}</style>
-</head><body><main class="contenedor"><h1>Sensor ambiental</h1><p class="fecha">Última lectura: __FECHA__</p><section class="medidas"><article class="medida"><div class="etiqueta">Temperatura</div><div class="valor">__TEMPERATURA__</div></article><article class="medida"><div class="etiqueta">Humedad del suelo</div><div class="valor">__HUMEDAD__</div></article></section><form action="/medir" method="get"><button type="submit">Medir ahora</button></form><hr><h2>Logs de ejecución</h2><form action="/" method="get"><button type="submit">Actualizar logs</button></form><pre>__LOGS__</pre><hr><h2>Actualizar programa</h2><form action="/actualizar" method="post" enctype="multipart/form-data"><label>Archivo main.py <input name="archivo" type="file" accept=".py" required></label><label>Contraseña <input name="password" type="password" required></label><button type="submit">Subir y aplicar</button></form><p class="fecha">Se conserva una copia como main.py.bak.</p><hr><h2>Reiniciar Pico</h2><p class="fecha">Se solicitará la contraseña OTA antes de reiniciar.</p><form action="/reiniciar" method="get"><button type="submit">Reiniciar ahora</button></form></main></body></html>""".replace("__FECHA__", fecha_txt).replace("__TEMPERATURA__", temperatura_txt).replace("__HUMEDAD__", humedad_txt).replace("__LOGS__", logs_txt)
+</head><body><main class="contenedor"><h1>Sensor ambiental</h1><p class="fecha">Última lectura: __FECHA__</p><section class="medidas"><article class="medida"><div class="etiqueta">Temperatura</div><div class="valor">__TEMPERATURA__</div></article><article class="medida"><div class="etiqueta">Humedad del suelo</div><div class="valor">__HUMEDAD__</div></article></section><form action="/actualizar-lectura" method="get"><button type="submit">Actualizar última lectura</button></form><form action="/medir" method="get"><button type="submit">Guardar última lectura en la API</button></form><p class="fecha">Primero actualiza los valores y después guarda esa misma lectura en la API.</p><hr><h2>Logs de ejecución</h2><form action="/" method="get"><button type="submit">Actualizar logs</button></form><pre>__LOGS__</pre><hr><h2>Actualizar programa</h2><form action="/actualizar" method="post" enctype="multipart/form-data"><label>Archivo main.py <input name="archivo" type="file" accept=".py" required></label><label>Contraseña <input name="password" type="password" required></label><button type="submit">Subir y aplicar</button></form><p class="fecha">Se conserva una copia como main.py.bak.</p><hr><h2>Reiniciar Pico</h2><p class="fecha">Se solicitará la contraseña OTA antes de reiniciar.</p><form action="/reiniciar" method="get"><button type="submit">Reiniciar ahora</button></form></main></body></html>""".replace("__FECHA__", fecha_txt).replace("__TEMPERATURA__", temperatura_txt).replace("__HUMEDAD__", humedad_txt).replace("__LOGS__", logs_txt)
 
 
-def guardar_medicion_desde_web():
-    """Mide y publica una lectura solicitada desde la página local."""
+def actualizar_ultima_medicion():
+    """Toma una lectura y la muestra en la página, sin publicarla."""
     temperatura = leer_temperatura()
     humedad = leer_humedad()
     fecha = fecha_iso()
@@ -148,7 +162,19 @@ def guardar_medicion_desde_web():
     ultima_medicion["humedad"] = humedad
     ultima_medicion["fecha"] = fecha
 
-    registrar("Medición solicitada desde la web:", ultima_medicion)
+    registrar("Última medición actualizada desde la web:", ultima_medicion)
+
+
+def guardar_medicion_desde_web():
+    """Publica en la API la última lectura mostrada en la página."""
+    temperatura = ultima_medicion["temperatura"]
+    humedad = ultima_medicion["humedad"]
+    fecha = ultima_medicion["fecha"]
+
+    if temperatura is None or humedad is None or fecha is None:
+        raise RuntimeError("Actualiza la última lectura antes de guardarla")
+
+    registrar("Guardando en la API la última medición:", ultima_medicion)
     token = login_api()
     enviar_datos(token, temperatura, humedad, fecha)
     registrar("Medición web guardada en la API")
@@ -272,6 +298,21 @@ def atender_web():
         cabecera, cuerpo = recibir_peticion(cliente)
         linea = cabecera.split("\r\n", 1)[0]
 
+        if linea.startswith("GET /actualizar-lectura"):
+            try:
+                actualizar_ultima_medicion()
+            except Exception as e:
+                registrar("Error actualizando la medición web:", repr(e))
+                responder(
+                    cliente,
+                    "502 Bad Gateway",
+                    "<h1>No se pudo actualizar la medición</h1><p>{}</p><p><a href=\"/\">Volver</a></p>".format(escapar_html(e)),
+                )
+                return
+            respuesta = "HTTP/1.1 303 See Other\r\nLocation: /\r\nConnection: close\r\n\r\n"
+            cliente.send(respuesta)
+            return
+
         if linea.startswith("GET /medir"):
             try:
                 guardar_medicion_desde_web()
@@ -309,7 +350,7 @@ def atender_web():
             try:
                 codigo = extraer_archivo_multipart(cabecera, cuerpo)
                 actualizar_main(codigo)
-                responder(cliente, "200 OK", "<h1>Actualización aplicada</h1><p>main.py se ha guardado y la versión anterior está en main.py.bak.</p><p>Reinicia ahora la Pico para ejecutar el nuevo programa.</p>")
+                responder(cliente, "200 OK", "<h1>Actualización aplicada</h1><p>main.py se ha guardado y la versión anterior está en main.py.bak.</p><p>Reinicia ahora la Pico para ejecutar el nuevo programa.</p><p><a href=\"/reiniciar\"><button type=\"button\">Reiniciar Pico</button></a></p><p><a href=\"/\">Volver</a></p>")
                 registrar("main.py actualizado desde la web")
             except Exception as e:
                 registrar("Error actualizando main.py:", e)
@@ -376,6 +417,14 @@ def login_api():
 
     r = None
     try:
+        # Hace visible un error de DNS antes de intentar el inicio de sesión.
+        host = API_URL.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        try:
+            direccion_api = socket.getaddrinfo(host, 0)[0][-1][0]
+        except Exception as e:
+            registrar("No se pudo resolver la API por DNS:", host, repr(e))
+            raise
+        registrar("API resuelta:", host, "->", direccion_api)
         r = urequests.post(url, json=datos)
         if r.status_code < 200 or r.status_code >= 300:
             raise RuntimeError("HTTP {} al iniciar sesión: {}".format(
